@@ -27,25 +27,21 @@ class DrawingServer implements MessageComponentInterface {
         return $roomId;
     }
 
-   public function onMessage(ConnectionInterface $from, $msg) {
-       $data = json_decode($msg, true);
+    public function onMessage(ConnectionInterface $from, $msg) {
+        $data = json_decode($msg, true);
 
-       switch ($data['type']) {
-           case 'createRoom':
-               $this->handleCreateRoom($from, $data);
-               break;
-           case 'joinRoom':
-               $this->handleJoinRoom($from, $data);
-               break;
-           case 'draw':
-               $this->handleDraw($from, $data);
-               break;
-           case 'broadcastDrawingData':
-               $this->handleBroadcastDrawingData($from, $data);
-               break;
-       }
-   }
-
+        switch ($data['type']) {
+            case 'createRoom':
+                $this->handleCreateRoom($from, $data);
+                break;
+            case 'joinRoom':
+                $this->handleJoinRoom($from, $data);
+                break;
+            case 'draw':
+                $this->handleDraw($from, $data);
+                break;
+        }
+    }
 
     private function handleCreateRoom(ConnectionInterface $from, $data) {
         $userName = $data['userName'];
@@ -70,39 +66,36 @@ class DrawingServer implements MessageComponentInterface {
         echo "Пользователь {$userName} создал комнату {$roomId} с названием '{$roomName}'. Хост: {$userName}, количество пользователей - 1.\n";
     }
 
-private function handleJoinRoom(ConnectionInterface $from, $data) {
-    $roomId = $data['roomId'];
-    $userName = $data['userName'];
-    if (isset($this->rooms[$roomId])) {
-        if (isset($this->rooms[$roomId]['users'][$userName])) {
-            $from->send(json_encode(['type' => 'joinRoom', 'status' => 'error', 'message' => 'Username already taken']));
+   private function handleJoinRoom(ConnectionInterface $from, $data) {
+        $roomId = $data['roomId'];
+        $userName = $data['userName'];
+        if (isset($this->rooms[$roomId])) {
+            if (isset($this->rooms[$roomId]['users'][$userName])) {
+                $from->send(json_encode(['type' => 'joinRoom', 'status' => 'error', 'message' => 'Username already taken']));
+            } else {
+                $this->rooms[$roomId]['users'][$userName] = $from;
+                $from->send(json_encode([
+                    'type' => 'joinRoom',
+                    'status' => 'success',
+                    'roomName' => $this->rooms[$roomId]['name'],
+                    'drawingData' => $this->rooms[$roomId]['drawingData'],
+                    'hostName' => $this->rooms[$roomId]['host']
+                ]));
+                echo "Пользователь {$userName} подключился к комнате {$roomId}. Хост: {$this->rooms[$roomId]['host']}, количество пользователей - " . count($this->rooms[$roomId]['users']) . ".\n";
+                echo "Текущие данные рисования: " . json_encode($this->rooms[$roomId]['drawingData']) . "\n";
+            }
         } else {
-            $this->rooms[$roomId]['users'][$userName] = $from;
-            $from->send(json_encode([
-                'type' => 'joinRoom',
-                'status' => 'success',
-                'roomName' => $this->rooms[$roomId]['name'],
-                'drawingData' => $this->rooms[$roomId]['drawingData'],
-                'hostName' => $this->rooms[$roomId]['host']
-            ]));
-            echo "Пользователь {$userName} подключился к комнате {$roomId}. Хост: {$this->rooms[$roomId]['host']}, количество пользователей - " . count($this->rooms[$roomId]['users']) . ".\n";
-            echo "Текущие данные рисования: " . json_encode($this->rooms[$roomId]['drawingData']) . "\n";
+            $from->send(json_encode(['type' => 'joinRoom', 'status' => 'error', 'message' => 'Room not found']));
+            echo "Запрос на подключение к комнате {$roomId}\n";
         }
-    } else {
-        $from->send(json_encode(['type' => 'joinRoom', 'status' => 'error', 'message' => 'Room not found']));
-        echo "Запрос на подключение к комнате {$roomId}\n";
     }
-}
-
 
 
 private function handleDraw(ConnectionInterface $from, $data) {
-    $roomId = $data['roomId'];
-    $drawingData = $data['drawingData'];
+        $roomId = $data['roomId'];
+        $drawingData = $data['drawingData'];
 
-    if (isset($this->rooms[$roomId])) {
-        // Проверка на дублирование данных
-        if (!in_array($drawingData, $this->rooms[$roomId]['drawingData'])) {
+        if (isset($this->rooms[$roomId])) {
             $this->rooms[$roomId]['drawingData'][] = $drawingData;
             foreach ($this->rooms[$roomId]['users'] as $user) {
                 if ($from !== $user) {
@@ -111,20 +104,6 @@ private function handleDraw(ConnectionInterface $from, $data) {
             }
         }
     }
-}
-
-private function handleBroadcastDrawingData(ConnectionInterface $from, $data) {
-    $roomId = $data['roomId'];
-    $drawingData = $data['drawingData'];
-
-    if (isset($this->rooms[$roomId])) {
-        foreach ($this->rooms[$roomId]['users'] as $user) {
-            if ($from !== $user) {
-                $user->send(json_encode(['type' => 'broadcastDrawingData', 'drawingData' => $drawingData]));
-            }
-        }
-    }
-}
 
     public function onClose(ConnectionInterface $conn) {
         foreach ($this->rooms as $roomId => $room) {
